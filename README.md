@@ -122,3 +122,29 @@ PC版で `static/` を開いても同じ画面が動く（サーバーがある�
 ### 銘柄名の表示
 
 コードを入れると銘柄名が出る。一覧（`static/data/names.json`）は `update_names.py` が東証（JPX）の上場銘柄一覧から作り、自動更新のたびに作り直す。
+
+### アプリから銘柄を追加する（スマホ版）
+
+未登録のコードを入れると「この銘柄を追加」ボタンが出る。押すとアプリが GitHub Actions に取得を依頼し、1〜3分後にそのまま練習できる。
+
+最初の1回だけ、「追加用の鍵を設定」から GitHub の鍵（Fine-grained personal access token）を登録する。
+
+1. https://github.com/settings/personal-access-tokens/new を開く
+2. Repository access：Only select repositories → このリポジトリだけ
+3. Permissions → Repository permissions → Actions：Read and write
+4. 作られた `github_pat_…` をアプリに貼り付ける
+
+鍵はその端末のブラウザ内（localStorage）にだけ保存する。この鍵でできるのは、このリポジトリの Actions を動かすことだけ。
+
+### 売買代金上位の自動登録
+
+毎日の自動更新のとき、売買代金ランキング上位10銘柄（個別株のみ。ETF等は除く）を自動で更新対象に入れる（`auto_watch.py`）。
+
+- ランキングの取得元：Yahoo!ファイナンス（失敗時は株探）
+- ランキングから7日外れた銘柄は更新をやめる。書き出し済みの日は消さない。1分足は約30日さかのぼれるので、上位に戻れば抜けた日も埋まる
+- 手動で追加した銘柄（`static/data/watchlist.json`）は外れずに更新し続ける
+- 数や期間は環境変数で変えられる：`DTR_AUTO_TOP_N`（既定10、0で自動登録なし）、`DTR_AUTO_KEEP_DAYS`（既定7）
+
+### データ量の目安
+
+1銘柄1日あたり約18KB。GitHub Pages の公開サイトは1GBまでなので、30銘柄を毎日貯めると約7年、100銘柄だと約2年で届く。スマホが読み込むのは開いた1日分だけなので、量が増えても動作は重くならない。

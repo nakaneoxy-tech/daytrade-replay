@@ -6,7 +6,8 @@
 GitHub Actions（.github/workflows/update-data.yml）から平日の大引け後に実行する。
 
 出力:
-  static/data/watchlist.json          一括更新リスト
+  static/data/watchlist.json          手動で追加した銘柄（ずっと更新し続ける）
+  static/data/auto.json               売買代金ランキング上位から自動で入った銘柄（auto_watch.py）
   static/data/index.json              銘柄ごとの練習可能日
   static/data/<銘柄>/<日付>.json      補完済みの1分足（場が終わった日だけ）
   static/data/_refs/<日付>.json       日経平均・ドル円
@@ -20,6 +21,7 @@ import os
 import sys
 from pathlib import Path
 
+import auto_watch
 from dtr import db, market, updater
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -67,7 +69,7 @@ def export_symbol(symbol: str) -> int:
     return n
 
 
-def build_index(watch: list[str]) -> dict:
+def build_index(watch: list[str], auto: list[str]) -> dict:
     symbols = {}
     for d in sorted(p for p in OUT.iterdir() if p.is_dir() and not p.name.startswith("_")):
         dates = sorted((f.stem for f in d.glob("*.json")), reverse=True)
@@ -78,6 +80,7 @@ def build_index(watch: list[str]) -> dict:
         "range_note": RANGE_NOTE,
         "repo": os.environ.get("GITHUB_REPOSITORY", ""),
         "watchlist": watch,
+        "auto": auto,
         "symbols": symbols,
     }
 
@@ -93,8 +96,16 @@ def main(argv: list[str]) -> int:
     if not watch:
         watch = ["6857.T"]
 
+    # 売買代金ランキング上位を自動登録（失敗しても手動分の更新は続ける）
+    try:
+        auto = [s for s in auto_watch.refresh() if s not in watch]
+    except Exception as e:  # noqa: BLE001
+        log.error("自動登録に失敗: %s", e)
+        auto = []
+    targets = watch + auto
+
     failed = []
-    for sym in watch:
+    for sym in targets:
         try:
             if updater.update_symbol(sym) == 0:
                 failed.append(sym)
@@ -103,17 +114,17 @@ def main(argv: list[str]) -> int:
             failed.append(sym)
     updater.update_refs(force=True)
 
-    for sym in watch:
+    for sym in targets:
         log.info("%s: %d 日分を新しく書き出し", sym, export_symbol(sym))
     # 1本も取れなかった銘柄（コード間違いなど）で、過去データも無いものはリストから外す
     watch = [s for s in watch if s not in failed or (OUT / s).exists()]
     dump(OUT / "watchlist.json", watch)
-    dump(OUT / "index.json", build_index(watch))
+    dump(OUT / "index.json", build_index(watch, auto))
 
     if failed:
         log.warning("取得できなかった銘柄: %s", ", ".join(failed))
     # 全銘柄が失敗したときは異常終了（Yahoo 側に止められた等）にして気づけるようにする
-    return 1 if len(failed) == len(set(failed) | set(watch)) and failed else 0
+    return 1 if failed and len(failed) == len(targets) else 0
 
 
 if __name__ == "__main__":

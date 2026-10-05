@@ -19,14 +19,19 @@ OUT = Path(__file__).resolve().parent / "static" / "data" / "names.json"
 UA = {"User-Agent": "Mozilla/5.0"}
 
 
-def fetch_names() -> dict[str, str]:
+def fetch_table() -> pd.DataFrame:
+    """JPX の上場銘柄一覧（コード・銘柄名・市場・商品区分など）。"""
     html = requests.get(PAGE, timeout=30, headers=UA).text
     m = re.search(r'href="([^"]+data_j\.xlsx?)"', html)
     if not m:
         raise RuntimeError("JPX のページに一覧ファイルのリンクが見つかりません")
     r = requests.get("https://www.jpx.co.jp" + m.group(1), timeout=60, headers=UA)
     r.raise_for_status()
-    df = pd.read_excel(io.BytesIO(r.content), dtype=str)
+    return pd.read_excel(io.BytesIO(r.content), dtype=str)
+
+
+def fetch_names() -> dict[str, str]:
+    df = fetch_table()
     names = {}
     for code, name in zip(df["コード"], df["銘柄名"]):
         code, name = str(code).strip().upper(), str(name).strip()

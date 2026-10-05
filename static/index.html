@@ -21,12 +21,14 @@
     <datalist id="symList"></datalist>
     <button id="btnFetch">取得</button>
     <span id="symName" class="sym-name"></span>
+    <button id="btnAdd" class="primary hidden">この銘柄を追加</button>
     <button id="btnUpdate" title="この銘柄と日経平均・ドル円を再取得">データ更新</button>
     <select id="dateSel"><option value="">練習日（先に取得）</option></select>
     <label class="mini">手数料/約定 <input id="commission" type="number" min="0" step="1" value="0">円</label>
     <label class="mini">スリッページ <select id="slip"><option value="0">0</option><option value="1">1ティック</option><option value="2">2ティック</option></select></label>
     <button id="btnStart" class="primary" disabled>この日で開始</button>
-    <a id="addSym" class="add-sym hidden" target="_blank" rel="noopener">銘柄を追加（GitHub）</a>
+    <a id="btnToken" class="add-sym hidden" href="#">追加用の鍵を設定</a>
+    <a id="addSym" class="add-sym hidden" target="_blank" rel="noopener">GitHubで追加</a>
   </div>
   <div class="note" id="rangeNote"></div>
 </header>
@@ -126,6 +128,22 @@
       </div>
       <div id="aiOut" class="ai-out"></div>
     </div>
+  </div>
+</div>
+<div id="tokenModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h2>追加用の鍵を設定</h2><button id="tkClose">閉じる</button></div>
+    <p>アプリから銘柄を追加するには、GitHub の「このリポジトリだけ操作できる鍵（トークン）」が1つ必要です。最初の1回だけ設定します。</p>
+    <ol class="steps">
+      <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub の鍵作成ページ</a>を開く（<span id="tkOwner">リポジトリの持ち主</span> でログイン）</li>
+      <li>Token name：好きな名前（例 <code>replay-add</code>）／Expiration：期限を選ぶ</li>
+      <li>Repository access：<b>Only select repositories</b> → <code id="tkRepo">daytrade-replay</code> だけを選ぶ</li>
+      <li>Permissions → Repository permissions → <b>Actions</b> を <b>Read and write</b> にする</li>
+      <li>Generate token を押し、表示された <code>github_pat_…</code> を下に貼り付ける</li>
+    </ol>
+    <input id="tkInput" type="password" autocomplete="off" placeholder="github_pat_…" class="tk-input">
+    <div class="row"><button id="tkSave" class="primary">保存</button><button id="tkClear">この端末から鍵を消す</button></div>
+    <p class="hint">鍵はこの端末のブラウザの中だけに保存され、GitHub への追加依頼にだけ使います。この鍵でできるのは、このリポジトリの自動更新を動かすことだけです。</p>
   </div>
 </div>
 <div id="dock" class="dock">

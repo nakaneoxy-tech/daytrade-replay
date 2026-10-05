@@ -146,3 +146,10 @@ button { touch-action: manipulation; }
 .sym-name { font-weight: 700; }
 .sym-name.warn { font-weight: 400; color: #e7b75a; font-size: 12px; }
 @media (max-width: 900px) { .sym-name { flex: 1 1 100%; } .sym-name:empty { display: none; } }
+
+.steps { padding-left: 20px; margin: 8px 0; }
+.steps li { margin: 5px 0; }
+.steps a { color: var(--accent); }
+.tk-input { width: 100%; margin: 6px 0; }
+code { background: #0b0d10; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+@media (max-width: 900px) { .loader #btnAdd { flex: 1 1 100%; padding: 10px; } }

@@ -69,9 +69,76 @@
       if (el.textContent) el.classList.add('warn');
       return;
     }
+    $('btnAdd').classList.add('hidden');
     if (isRegistered(code)) { el.textContent = name; return; }
-    el.textContent = `${name}（未登録：「銘柄を追加」を開き、Run workflow に ${code} を入れて実行すると数分後に使えます）`;
+    if (adding) return;
+    el.textContent = `${name}（未登録）`;
     el.classList.add('warn');
+    if (st.cfg && st.cfg.repo) $('btnAdd').classList.remove('hidden');
+  }
+
+  // ---------- 銘柄の追加（サーバーなし版）：GitHub Actions に取得を依頼する ----------
+  const TOKEN_KEY = 'dtr.ghToken';
+  const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let adding = false;
+  async function gh(path, opts = {}) {
+    const r = await fetch(`https://api.github.com/repos/${st.cfg.repo}${path}`, {
+      ...opts,
+      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${getToken()}`, 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    if ([401, 403, 404].includes(r.status)) throw Object.assign(new Error('鍵が正しくないか、権限が足りません。「追加用の鍵を設定」で設定し直してください'), { auth: true });
+    if (!r.ok) throw new Error(`GitHub への依頼に失敗しました（${r.status}）`);
+    return r.status === 204 ? null : r.json();
+  }
+  function openTokenModal() {
+    $('tkRepo').textContent = st.cfg.repo.split('/')[1] || st.cfg.repo;
+    $('tkOwner').textContent = st.cfg.repo.split('/')[0] || 'リポジトリの持ち主';
+    $('tkInput').value = '';
+    $('tkInput').placeholder = getToken() ? '設定済み（入れ直すときだけ貼り付け）' : 'github_pat_…';
+    $('tokenModal').classList.remove('hidden');
+  }
+  async function addSymbol() {
+    const code = codeOf($('symbol').value);
+    if (adding || !names[code]) return;
+    if (!getToken()) return openTokenModal();
+    const el = $('symName');
+    const say = (msg) => { el.className = 'sym-name warn'; el.textContent = `${names[code]}：${msg}`; };
+    adding = true; $('btnAdd').classList.add('hidden');
+    try {
+      say('取得を依頼しています…');
+      const since = Date.now() - 60000;
+      await gh('/actions/workflows/update-data.yml/dispatches', { method: 'POST', body: JSON.stringify({ ref: 'main', inputs: { symbols: code } }) });
+      // 実行の完了を待つ（通常1〜3分）
+      let run = null;
+      for (let i = 0; i < 60; i++) {
+        await sleep(i < 2 ? 4000 : 8000);
+        const j = await gh('/actions/workflows/update-data.yml/runs?event=workflow_dispatch&per_page=5');
+        run = j.workflow_runs.find((r) => Date.parse(r.created_at) >= since) || run;
+        if (!run) { say('順番待ち…'); continue; }
+        if (run.status === 'completed') break;
+        say(run.status === 'in_progress' ? `データを取得中…（${Math.round((Date.now() - Date.parse(run.created_at)) / 1000)}秒経過・通常1〜3分）` : '順番待ち…');
+      }
+      if (!run || run.status !== 'completed') throw new Error('時間内に終わりませんでした。少し待ってからページを再読み込みしてください');
+      if (run.conclusion !== 'success') throw new Error('取得に失敗しました（Yahoo 側の制限などの可能性）。時間をおいて試してください');
+      // 公開された一覧に出てくるまで待つ
+      say('仕上げ中…');
+      for (let i = 0; i < 12; i++) {
+        window.DTRLocal.reload();
+        st.cfg = await api('/api/config');
+        if (st.cfg.symbols.includes(code + '.T')) break;
+        await sleep(5000);
+      }
+      if (!st.cfg.symbols.includes(code + '.T')) throw new Error('1分足が取れませんでした（上場直後・売買停止などの可能性）');
+      adding = false;
+      if (codeOf($('symbol').value) === code) await doFetch(false);
+      toast(`${names[code]} を追加しました。今後は毎日自動で更新されます`, 4500);
+    } catch (e) {
+      adding = false;
+      updateSymName();
+      toast(e.message, 7000);
+      if (e.auth) openTokenModal();
+    } finally { adding = false; }
   }
 
   // ---------- charts ----------
@@ -429,6 +496,22 @@
   $('btnUpdate').onclick = () => doFetch(true);
   $('symbol').addEventListener('keydown', (e) => { if (e.key === 'Enter') doFetch(false); });
   $('symbol').addEventListener('input', updateSymName);
+  $('btnAdd').onclick = addSymbol;
+  $('btnToken').onclick = (e) => { e.preventDefault(); openTokenModal(); };
+  $('tkClose').onclick = () => $('tokenModal').classList.add('hidden');
+  $('tkSave').onclick = () => {
+    const v = $('tkInput').value.trim();
+    if (!v) return toast('鍵を貼り付けてください');
+    try { localStorage.setItem(TOKEN_KEY, v); } catch { return toast('この端末では保存できませんでした'); }
+    $('tokenModal').classList.add('hidden');
+    toast('鍵を保存しました');
+    if (!$('btnAdd').classList.contains('hidden')) addSymbol();
+  };
+  $('tkClear').onclick = () => {
+    try { localStorage.removeItem(TOKEN_KEY); } catch { /* 保存されていなければ何もしない */ }
+    $('tokenModal').classList.add('hidden');
+    toast('鍵を消しました');
+  };
   // サーバーなし版：登録済みの銘柄を入れたら、そのまま日付一覧を読み込む
   $('symbol').addEventListener('change', () => { const c = codeOf($('symbol').value); if (localMode && c && names[c] && isRegistered(c) && codeOf(st.symbol) !== c) doFetch(false); });
   $('btnStart').onclick = startDay;
@@ -501,7 +584,7 @@
         $('btnFetch').textContent = '開く';
         $('symList').innerHTML = st.cfg.symbols.map((s) => `<option value="${codeOf(s)}" label="${nameOf(s)}">`).join('');
         $('emptyMsg').textContent = '銘柄を選んで「開く」→ 練習日を選んで「この日で開始」';
-        if (st.cfg.add_url) { $('addSym').href = st.cfg.add_url; $('addSym').classList.remove('hidden'); }
+        if (st.cfg.add_url) { $('addSym').href = st.cfg.add_url; $('addSym').classList.remove('hidden'); $('btnToken').classList.remove('hidden'); }
         if (st.cfg.symbols.length) {
           if (!st.cfg.symbols.includes($('symbol').value.trim() + '.T')) $('symbol').value = st.cfg.symbols[0].replace('.T', '');
           await doFetch(false);

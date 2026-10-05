@@ -11,7 +11,7 @@
     if (!r.ok) throw new Error(`${url} を読み込めません（HTTP ${r.status}）`);
     return r.json();
   }
-  const loadIndex = async () => (index ||= await getJSON('data/index.json'));
+  const loadIndex = async () => (index ||= await getJSON(`data/index.json?t=${Date.now()}`));
 
   function normalize(raw) {
     const s = String(raw || '').trim().toUpperCase();
@@ -200,6 +200,7 @@
       return {
         provider: '自動更新（GitHub Actions）', range_note: idx.range_note, updated: idx.updated,
         ai_enabled: false, ai_model: '', watchlist: idx.watchlist || [], symbols: Object.keys(idx.symbols),
+        repo: idx.repo || '',
         add_url: idx.repo ? `https://github.com/${idx.repo}/actions/workflows/update-data.yml` : '',
       };
     }
@@ -237,5 +238,7 @@
     throw new Error(`未対応のAPI: ${path}`);
   }
 
-  window.DTRLocal = { call };
+  // 銘柄を追加した直後に、練習可能日の一覧を読み直す
+  const reload = () => { index = null; };
+  window.DTRLocal = { call, reload };
 })();
