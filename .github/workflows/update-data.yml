@@ -46,6 +46,7 @@ jobs:
           SYMBOLS: ${{ github.event.inputs.symbols }}
         run: |
           pip install -r requirements-ci.txt
+          python update_names.py
           python export_static.py $SYMBOLS
 
       - name: データをコミット

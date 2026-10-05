@@ -52,6 +52,28 @@
     return j;
   }
 
+  // ---------- 銘柄名 ----------
+  let names = {};
+  const codeOf = (raw) => String(raw || '').trim().toUpperCase().replace(/\.T$/, '');
+  const nameOf = (sym) => names[codeOf(sym)] || '';
+  const withName = (sym) => (nameOf(sym) ? `${nameOf(sym)}（${codeOf(sym)}）` : sym);
+  const isRegistered = (code) => !localMode || !st.cfg || st.cfg.symbols.includes(code + '.T');
+  function updateSymName() {
+    const code = codeOf($('symbol').value);
+    const el = $('symName');
+    el.className = 'sym-name';
+    if (!code) { el.textContent = ''; return; }
+    const name = names[code];
+    if (!name) {
+      el.textContent = /^[0-9][0-9A-Z]{3}$/.test(code) && Object.keys(names).length ? '銘柄が見つかりません' : '';
+      if (el.textContent) el.classList.add('warn');
+      return;
+    }
+    if (isRegistered(code)) { el.textContent = name; return; }
+    el.textContent = `${name}（未登録：「銘柄を追加」を開き、Run workflow に ${code} を入れて実行すると数分後に使えます）`;
+    el.classList.add('warn');
+  }
+
   // ---------- charts ----------
   const LW = LightweightCharts;
   const baseOpts = {
@@ -256,7 +278,7 @@
       $('stats').innerHTML = s.days ? `
         <div>累計損益 <b class="${s.total_pnl > 0 ? 'plus' : s.total_pnl < 0 ? 'minus' : ''}">${yen(s.total_pnl)}円</b></div>
         <div>勝率 <b>${s.win_rate ?? '—'}%</b>（${s.wins}/${s.trips} 往復）・日次勝率 <b>${s.day_win_rate ?? '—'}%</b>（${s.days}日）</div>
-        <table>${s.recent.slice(0, 8).map((r) => `<tr><td>${r.trade_date}</td><td>${r.symbol}</td>
+        <table>${s.recent.slice(0, 8).map((r) => `<tr><td>${r.trade_date}</td><td>${nameOf(r.symbol) || r.symbol}</td>
           <td class="${r.pnl > 0 ? 'plus' : r.pnl < 0 ? 'minus' : ''}" style="text-align:right">${yen(r.pnl)}</td><td>${r.wins}勝${r.losses}敗</td></tr>`).join('')}</table>`
         : '<span class="hint">まだ記録はありません（1日を最後まで再生すると保存されます）</span>';
     } catch (e) { $('stats').textContent = e.message; }
@@ -281,12 +303,23 @@
       const j = await api(update ? '/api/update' : '/api/fetch', { symbol: raw });
       st.symbol = j.symbol;
       fillDates(j.dates);
-      toast(localMode ? `${j.symbol}: 練習できる日 ${j.dates.length}日` : `${j.symbol}: ${j.fetched}本取得・練習可能 ${j.dates.length}日（一括更新リストに登録済み）`);
-    } catch (e) { toast('取得失敗: ' + e.message, 5000); }
-    finally { btn.disabled = false; btn.textContent = label; }
+      toast(localMode ? `${withName(j.symbol)}: 練習できる日 ${j.dates.length}日` : `${j.symbol}: ${j.fetched}本取得・練習可能 ${j.dates.length}日（一括更新リストに登録済み）`);
+    } catch (e) {
+      // 開けなかったときは前の銘柄の日付を残さない（入力したコードと違う銘柄で始まってしまうのを防ぐ）
+      st.symbol = null; fillDates([]);
+      toast('取得失敗: ' + e.message, 5000);
+    }
+    finally { btn.disabled = false; btn.textContent = label; updateSymName(); }
   }
 
   async function startDay() {
+    // 入力欄のコードと、日付を読み込んだ銘柄が違うときは、入力欄の銘柄を読み込み直す
+    const code = codeOf($('symbol').value);
+    if (code && codeOf(st.symbol) !== code) {
+      await doFetch(false);
+      if (codeOf(st.symbol) !== code) return;
+      return toast(`${withName(st.symbol)} に切り替えました。練習日を選んで「この日で開始」を押してください`, 4500);
+    }
     const date = $('dateSel').value;
     if (!st.symbol || !date) return;
     stopPlay();
@@ -298,7 +331,7 @@
       });
       Object.assign(st, { sid: j.state.id, bars: [], fills: [], state: j.state, finished: false,
         tick: j.tick || 1, prevClose: j.prev_close, refs: { nikkei: j.refs.nikkei || [], usdjpy: j.refs.usdjpy || [] } });
-      $('title').textContent = `${st.symbol}  ${date}`;
+      $('title').textContent = `${withName(st.symbol)}  ${date}`;
       $('emptyMsg').textContent = '寄り前です。▶再生 か +1分 で進めます（寄り前の注文は最初の約定足の始値で約定）';
       $('emptyMsg').style.display = '';
       if (prevLine) candle.removePriceLine(prevLine);
@@ -371,7 +404,7 @@
   function finishDay(r) {
     stopPlay(); st.finished = true;
     setEnabled(false);
-    $('mTitle').textContent = `${r.symbol} ${r.date} の結果`;
+    $('mTitle').textContent = `${withName(r.symbol)} ${r.date} の結果`;
     $('mBody').innerHTML = `
       <div class="big ${r.pnl > 0 ? 'plus' : r.pnl < 0 ? 'minus' : ''}">${yen(r.pnl)}円</div>
       <div>往復 ${r.trips}回　${r.wins}勝 ${r.losses}敗　勝率 ${r.win_rate ?? '—'}%　手数料 ${yen(r.commission, false)}円
@@ -395,6 +428,9 @@
   $('btnFetch').onclick = () => doFetch(false);
   $('btnUpdate').onclick = () => doFetch(true);
   $('symbol').addEventListener('keydown', (e) => { if (e.key === 'Enter') doFetch(false); });
+  $('symbol').addEventListener('input', updateSymName);
+  // サーバーなし版：登録済みの銘柄を入れたら、そのまま日付一覧を読み込む
+  $('symbol').addEventListener('change', () => { const c = codeOf($('symbol').value); if (localMode && c && names[c] && isRegistered(c) && codeOf(st.symbol) !== c) doFetch(false); });
   $('btnStart').onclick = startDay;
   $('btnPlay').onclick = togglePlay;
   $('btnStep').onclick = () => step(1);
@@ -448,6 +484,8 @@
   (async () => {
     onSpeed();
     await detectMode();
+    // 銘柄コード→銘柄名（東証の上場銘柄一覧から作った data/names.json）。無くても動く
+    try { const r = await fetch('data/names.json'); if (r.ok) names = await r.json(); } catch { /* 名前なしで続行 */ }
     try {
       st.cfg = await api('/api/config');
       $('rangeNote').textContent = `データ: ${st.cfg.provider}　※ ${st.cfg.range_note}　当日分は大引け(15:30)後に練習日へ追加されます。`
@@ -461,7 +499,7 @@
       if (localMode) {
         // サーバーなし版：登録済みの銘柄から選ぶ。新しい銘柄は GitHub Actions で追加する
         $('btnFetch').textContent = '開く';
-        $('symList').innerHTML = st.cfg.symbols.map((s) => `<option value="${s.replace('.T', '')}">`).join('');
+        $('symList').innerHTML = st.cfg.symbols.map((s) => `<option value="${codeOf(s)}" label="${nameOf(s)}">`).join('');
         $('emptyMsg').textContent = '銘柄を選んで「開く」→ 練習日を選んで「この日で開始」';
         if (st.cfg.add_url) { $('addSym').href = st.cfg.add_url; $('addSym').classList.remove('hidden'); }
         if (st.cfg.symbols.length) {
@@ -470,6 +508,7 @@
         }
       }
     } catch (e) { toast((localMode ? 'データを読み込めません: ' : 'サーバーに接続できません: ') + e.message, 6000); }
+    updateSymName();
     loadStats();
   })();
 })();

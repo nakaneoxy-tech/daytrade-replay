@@ -113,7 +113,8 @@ button { touch-action: manipulation; }
   .started .setup-btn { display: inline-block; }
   .started:not(.show-setup) .loader, .started:not(.show-setup) .note { display: none; }
   .loader #symbol { width: 110px; }
-  .loader #dateSel { min-width: 0; flex: 1; }
+  .loader #dateSel { min-width: 0; flex: 1 1 100%; }
+  .loader #btnStart { flex: 1 1 100%; padding: 10px; }
 
   .layout { display: block; height: auto; min-height: 0; }
   .charts { padding: 6px; gap: 6px; }
@@ -141,3 +142,7 @@ button { touch-action: manipulation; }
   .dock-btns { display: grid; grid-template-columns: 1fr 1.1fr 1.6fr 1.6fr 1.3fr; gap: 6px; }
   .dock-btns button { padding: 13px 0; font-weight: 700; font-size: 14px; }
 }
+
+.sym-name { font-weight: 700; }
+.sym-name.warn { font-weight: 400; color: #e7b75a; font-size: 12px; }
+@media (max-width: 900px) { .sym-name { flex: 1 1 100%; } .sym-name:empty { display: none; } }
