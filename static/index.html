@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1216">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>デイトレ練習リプレイ</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">デイトレ練習リプレイ <span class="badge">仮想売買のみ・実口座とは無関係</span>
+    <button id="btnSetup" class="setup-btn">銘柄・日付を変える</button></div>
+  <div class="loader">
+    <input id="symbol" placeholder="銘柄コード 例: 6857" value="6857" autocomplete="off" list="symList" inputmode="text">
+    <datalist id="symList"></datalist>
+    <button id="btnFetch">取得</button>
+    <button id="btnUpdate" title="この銘柄と日経平均・ドル円を再取得">データ更新</button>
+    <select id="dateSel"><option value="">練習日（先に取得）</option></select>
+    <label class="mini">手数料/約定 <input id="commission" type="number" min="0" step="1" value="0">円</label>
+    <label class="mini">スリッページ <select id="slip"><option value="0">0</option><option value="1">1ティック</option><option value="2">2ティック</option></select></label>
+    <button id="btnStart" class="primary" disabled>この日で開始</button>
+    <a id="addSym" class="add-sym hidden" target="_blank" rel="noopener">銘柄を追加（GitHub）</a>
+  </div>
+  <div class="note" id="rangeNote"></div>
+</header>
+
+<main class="layout">
+  <section class="charts">
+    <div class="chart-head">
+      <div><span id="title">—</span> <span id="clock" class="clock">--:--</span></div>
+      <div class="tf" id="tfBtns">
+        <button data-tf="1" class="on">1分</button><button data-tf="3">3分</button><button data-tf="5">5分</button><button data-tf="15">15分</button>
+        <button id="btnMarkers" class="marker-btn" title="Mキーで切替"></button>
+        <button id="btnRefs" class="refs-btn">日経・ドル円</button>
+      </div>
+      <div class="legend"><i class="l-ma5"></i>MA5 <i class="l-ma25"></i>MA25 <i class="l-vwap"></i>VWAP <i class="l-vp"></i>価格帯別出来高</div>
+    </div>
+    <div id="mainWrap" class="main-wrap">
+      <div id="mainChart" class="main-chart"></div>
+      <canvas id="vpCanvas" class="vp"></canvas>
+      <div id="emptyMsg" class="empty">銘柄コードを入力して「取得」→ 練習日を選んで「この日で開始」</div>
+    </div>
+    <div class="refs">
+      <div class="ref"><div class="ref-title">日経平均 <span id="nkLast">—</span></div><div id="nkChart" class="ref-chart"></div></div>
+      <div class="ref"><div class="ref-title">ドル円 <span id="fxLast">—</span></div><div id="fxChart" class="ref-chart"></div></div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="panel">
+      <div class="row play">
+        <button id="btnPlay" disabled>▶ 再生</button>
+        <button id="btnStep" disabled title="→キー">+1分</button>
+        <button id="btnStep10" disabled title="Shift+→">+10分</button>
+      </div>
+      <div class="row">
+        <label>速度</label>
+        <input id="speed" type="range" min="0" max="11" step="1" value="5">
+        <span id="speedLbl" class="mono">5倍</span>
+      </div>
+      <div class="hint">1倍 = 実時間（1分足が60秒ごと）／60倍 = 1秒ごと</div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <label>株数</label>
+        <input id="qty" type="number" min="100" step="100" value="100">
+        <span class="hint">100株単位</span>
+      </div>
+      <div class="row trade">
+        <button id="btnBuy" class="buy" disabled>買い <kbd>B</kbd></button>
+        <button id="btnSell" class="sell" disabled>売り <kbd>S</kbd></button>
+      </div>
+      <div class="row trade">
+        <button id="btnFlat" disabled>全決済 <kbd>X</kbd></button>
+        <button id="btnCancel" disabled>注文取消 <kbd>C</kbd></button>
+      </div>
+      <div class="hint">約定は<b>次の1分足の始値</b>（先読み防止）。取引のない分は次に約定のある足まで待ちます。</div>
+    </div>
+
+    <div class="panel pos">
+      <div class="kv"><span>建玉</span><b id="posTxt">0</b></div>
+      <div class="kv"><span>平均単価</span><b id="avgTxt">—</b></div>
+      <div class="kv"><span>現在値</span><b id="lastTxt">—</b></div>
+      <div class="kv"><span>評価損益</span><b id="unrTxt">0</b></div>
+      <div class="kv"><span>実現損益</span><b id="relTxt">0</b></div>
+      <div class="kv"><span>手数料計</span><b id="feeTxt">0</b></div>
+      <div id="pendingTxt" class="pending"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">約定履歴</div>
+      <div id="fills" class="fills"><div class="hint">まだ約定はありません</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">通算成績</div>
+      <div id="stats" class="stats">—</div>
+    </div>
+
+    <div class="panel keys">
+      <div class="panel-title">ショートカット</div>
+      <div><kbd>Space</kbd> 再生/停止 <kbd>→</kbd> +1分 <kbd>Shift</kbd>+<kbd>→</kbd> +10分</div>
+      <div><kbd>B</kbd> 買い <kbd>S</kbd> 売り <kbd>X</kbd> 全決済 <kbd>C</kbd> 注文取消</div>
+      <div><kbd>1</kbd><kbd>3</kbd><kbd>5</kbd><kbd>F</kbd> 足の切替（1/3/5/15分） <kbd>↑</kbd><kbd>↓</kbd> 株数±100</div>
+      <div><kbd>M</kbd> 約定マーカーの表示切替（直近のみ文字／矢印のみ／非表示）</div>
+    </div>
+  </aside>
+</main>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h2 id="mTitle">本日の結果</h2><button id="mClose">閉じる</button></div>
+    <div id="mBody"></div>
+    <div class="ai">
+      <div class="ai-head">
+        <button id="btnAI">AIトレード分析</button>
+        <span id="aiNote" class="hint"></span>
+      </div>
+      <div id="aiOut" class="ai-out"></div>
+    </div>
+  </div>
+</div>
+<div id="dock" class="dock">
+  <div class="dock-info"><span id="dockPos">建玉なし</span><b id="dockPnl" class="mono">0円</b></div>
+  <div class="dock-btns">
+    <button data-act="play" disabled>▶</button>
+    <button data-act="step" disabled>+1分</button>
+    <button data-act="buy" class="buy" disabled>買い</button>
+    <button data-act="sell" class="sell" disabled>売り</button>
+    <button data-act="flat" disabled>全決済</button>
+  </div>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="local-backend.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

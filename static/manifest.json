@@ -1,0 +1,11 @@
+{
+  "name": "デイトレ練習リプレイ",
+  "short_name": "練習リプレイ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1216",
+  "theme_color": "#0f1216",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
